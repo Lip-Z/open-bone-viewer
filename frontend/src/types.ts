@@ -51,10 +51,10 @@ const translatedMessages: Record<string, string> = {
 export const localText = (message: string) => translatedMessages[message] || message;
 export function studyLabel(study: Study): string {
   return study.label
-    .replace(/^CT series (\d+)$/, 'CT 序列 $1')
-    .replace(/^DICOM projection (\d+)$/, 'DICOM 投照影像 $1')
+    .replace(/^CT series (\d+)$/, 'CT 影像组 $1')
+    .replace(/^DICOM projection (\d+)$/, 'X 光影像 $1')
     .replace(/^DICOM image (\d+)$/, 'DICOM 图片 $1')
-    .replace(/^Image (\d+)$/, '普通图片 $1') || (study.kind === 'ct' ? 'CT 检查' : '二维影像');
+    .replace(/^Image (\d+)$/, '普通图片 $1') || (study.kind === 'ct' ? 'CT 影像' : '二维影像');
 }
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {

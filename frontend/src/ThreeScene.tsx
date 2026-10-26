@@ -87,7 +87,7 @@ export function ThreeScene({ studyId, meta, mode, threshold, model, resetKey }: 
         for (const x of [bounds[0][0], bounds[1][0]]) for (const y of [bounds[0][1], bounds[1][1]]) for (const z of [bounds[0][2], bounds[1][2]]) contentBox.expandByPoint(object.localToWorld(new THREE.Vector3(x, y, z)));
         rt.object = object; rt.bounds = contentBox; scene.add(object);
       } else {
-        if (!model) throw new Error('请先生成阈值表面。');
+          if (!model) throw new Error('请先在“更多调整与导出”里生成表面模型。');
         const buffer = await loadGzip(assetUrl(studyId, model.mesh_file), abort.signal);
         if (abort.signal.aborted) return;
         if (buffer.byteLength < 12) throw new Error('表面模型数据不完整。');
@@ -118,5 +118,5 @@ export function ThreeScene({ studyId, meta, mode, threshold, model, resetKey }: 
   }, [threshold, meta.volume_rendering]);
   useEffect(() => { if (runtime.current) frameObject(runtime.current); }, [resetKey]);
 
-  return <div ref={host} className="three-host">{message && <div className="view-message" role="status">{message}</div>}<div className="render-badge">{mode === 'volume' ? '派生体数据 · 显示插值' : '阈值网格 · RAS / mm'}</div></div>;
+  return <div ref={host} className="three-host">{message && <div className="view-message" role="status">{message}</div>}<div className="render-badge">{mode === 'volume' ? 'CT 生成的三维显示' : '按设置生成的表面'}</div></div>;
 }

@@ -32,7 +32,9 @@ Real images were tested locally with the owner's authorization. They are not inc
 
 The synthetic demo and both full-resolution private CT series were opened in Chromium. Checks included rendered MPR pixels, linked slice/crosshair controls, window presets, entering/exiting fullscreen, volume and surface display, body/all-structure switching, 3D drag/reset, NRRD and STL downloads, rejecting stale export parameters, and a narrower desktop viewport. Screenshots were inspected.
 
-The two full-resolution CT series were switched repeatedly without stale dimensions. A direct study URL and browser refresh restored the selected study. Selecting a localizer showed a readable unsupported message and no CT canvases. Four private projection images were separately displayed and inspected. No JavaScript page errors or external browser requests were found in the recorded runs.
+The patient-facing interface was then exercised at 390×844. CT and X-ray pages had no horizontal overflow; the related help dialog opened at that width without overflow, and its local keyword search returned the expected answer. The CT run covered the three plane canvases, volume rendering, contextual help, fullscreen, surface generation, NRRD/STL downloads and export invalidation. The X-ray run confirmed a non-empty full-resolution image, zoom/reset, contrast/brightness/reset and the image download entry. Both recorded runs had no JavaScript page errors or external browser requests.
+
+The two full-resolution CT series were switched repeatedly without stale dimensions. A direct study URL and browser refresh restored the selected study. Selecting a localizer showed a readable unsupported message and no CT canvases. Four private projection images were separately displayed and inspected.
 
 All real images, exports, source fingerprints, screenshots and detailed reports remain outside this source checkout. A source-boundary audit found no medical binary assets, installed environments or sampled private identifying values among the Git-visible source files.
 

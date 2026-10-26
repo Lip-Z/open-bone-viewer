@@ -5,10 +5,11 @@ import { clamp, voxelValue } from './types';
 import type { CtMetadata, XYZ } from './types';
 
 export const planes = [
-  { axis: 2, name: '横断位', code: 'AXIAL', color: '#e57c86', vertical: ['A', 'P'], horizontal: ['R', 'L'] },
-  { axis: 1, name: '冠状位', code: 'CORONAL', color: '#75c5b1', vertical: ['S', 'I'], horizontal: ['R', 'L'] },
-  { axis: 0, name: '矢状位', code: 'SAGITTAL', color: '#d8ba79', vertical: ['S', 'I'], horizontal: ['A', 'P'] },
+  { axis: 2, name: '横断位', label: '横着看', code: 'AXIAL', color: '#e57c86', vertical: ['A', 'P'], horizontal: ['R', 'L'] },
+  { axis: 1, name: '冠状位', label: '正面看', code: 'CORONAL', color: '#75c5b1', vertical: ['S', 'I'], horizontal: ['R', 'L'] },
+  { axis: 0, name: '矢状位', label: '侧面看', code: 'SAGITTAL', color: '#d8ba79', vertical: ['S', 'I'], horizontal: ['A', 'P'] },
 ];
+const directions: Record<string, string> = { A: '前', P: '后', S: '上', I: '下', R: '右', L: '左' };
 
 export function SlicePanel({ plane, meta, volume, point, onPoint, center, width }: {
   plane: typeof planes[number]; meta: CtMetadata; volume: Float32Array; point: XYZ;
@@ -101,12 +102,12 @@ export function SlicePanel({ plane, meta, volume, point, onPoint, center, width 
   }
 
   return <section ref={panelRef} className="view-panel slice-panel" style={{ '--plane-color': plane.color } as React.CSSProperties}>
-    <div className="panel-heading"><div><span className="plane-dot" /><strong>{plane.name}</strong><span className="panel-code">{plane.code}</span></div><FullscreenButton target={panelRef} label={plane.name} /></div>
+    <div className="panel-heading"><div><span className="plane-dot" /><strong>{plane.label}</strong><span className="panel-code patient-plane-name">{plane.name}</span></div><FullscreenButton target={panelRef} label={plane.name} /></div>
     <div className="slice-host" ref={hostRef}>
       <canvas ref={canvasRef} aria-label={`${plane.name}切片，点击或拖动联动定位，滚轮切换层面`} tabIndex={0} onKeyDown={event => { if (event.key === 'ArrowUp' || event.key === 'ArrowDown') { event.preventDefault(); const next: XYZ = [...point]; next[axis] = clamp(point[axis] + (event.key === 'ArrowDown' ? 1 : -1), 0, meta.dimensions_xyz[axis] - 1); onPoint(next); } }} onPointerDown={event => { if (event.button === 0) { event.currentTarget.setPointerCapture(event.pointerId); locate(event); } }} onPointerMove={event => { if (event.buttons === 1) locate(event); }} />
-      <span className="orientation top">{plane.vertical[0]}</span><span className="orientation bottom">{plane.vertical[1]}</span><span className="orientation left">{plane.horizontal[0]}</span><span className="orientation right">{plane.horizontal[1]}</span>
-      <span className="slice-info">{meta.spacing_xyz_mm[axis].toFixed(2)} mm / 层面间距</span><span className="source-tag">原始 HU</span>
+      <span className="orientation top" title={`身体的${directions[plane.vertical[0]]}方`}>{directions[plane.vertical[0]]} {plane.vertical[0]}</span><span className="orientation bottom" title={`身体的${directions[plane.vertical[1]]}方`}>{directions[plane.vertical[1]]} {plane.vertical[1]}</span><span className="orientation left" title={`身体的${directions[plane.horizontal[0]]}方`}>{directions[plane.horizontal[0]]} {plane.horizontal[0]}</span><span className="orientation right" title={`身体的${directions[plane.horizontal[1]]}方`}>{directions[plane.horizontal[1]]} {plane.horizontal[1]}</span>
+      <span className="slice-info">点一下，对照同一位置</span><span className="source-tag">原始切片</span>
     </div>
-    <div className="slice-slider"><span>{point[axis] + 1}<small> / {meta.dimensions_xyz[axis]}</small></span><input aria-label={`${plane.name}层面`} type="range" min={0} max={meta.dimensions_xyz[axis] - 1} value={point[axis]} onChange={event => { const next: XYZ = [...point]; next[axis] = Number(event.target.value); onPoint(next); }} /></div>
+    <div className="slice-slider"><span>第 {point[axis] + 1} 层<small> / {meta.dimensions_xyz[axis]}</small></span><input aria-label={`${plane.name}层面`} aria-valuetext={`第 ${point[axis] + 1} 层，共 ${meta.dimensions_xyz[axis]} 层`} type="range" min={0} max={meta.dimensions_xyz[axis] - 1} value={point[axis]} onChange={event => { const next: XYZ = [...point]; next[axis] = Number(event.target.value); onPoint(next); }} /></div>
   </section>;
 }

@@ -27,11 +27,58 @@ def check(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
+def load_projection_study(page, study_id: str) -> None:
+    page.locator(f'[data-study-id="{study_id}"] .study-select').click()
+    image = page.locator('.xray-host img')
+    image.wait_for(state='visible', timeout=180000)
+    page.wait_for_function(
+        'document.querySelector(".xray-host img")?.complete && '
+        'document.querySelector(".xray-host img").naturalWidth > 0',
+        timeout=180000,
+    )
+    image_info = image.evaluate('image => ({width: image.naturalWidth, height: image.naturalHeight})')
+    check(image_info['width'] > 100 and image_info['height'] > 100, f'X-ray image is empty: {image_info}')
+
+
+def check_projection_viewer(page, output: Path, report: dict, *, search_help: bool) -> None:
+    check(page.locator('.viewer-advanced').get_attribute('open') is None, 'X-ray advanced controls should start closed')
+    page.get_by_role('button', name='X 光怎么看？', exact=True).click()
+    page.get_by_role('heading', name='先看完整画面，再放大想了解的位置', exact=True).wait_for(state='visible')
+    if search_help:
+        page.get_by_label('搜索答疑', exact=True).fill('不同深度')
+        page.get_by_role('heading', name='找到 1 个相关问题', exact=True).wait_for(state='visible')
+    page.get_by_role('button', name='关闭答疑', exact=True).click()
+    check(page.locator('.help-dialog').get_attribute('open') is None, 'X-ray help did not close')
+
+    page.get_by_role('button', name='放大影像', exact=True).click()
+    check('120%' in page.locator('.zoom-controls').inner_text(), 'X-ray zoom failed')
+    page.get_by_role('button', name='恢复初始显示', exact=True).click()
+    check('100%' in page.locator('.zoom-controls').inner_text(), 'X-ray zoom reset failed')
+
+    page.locator('.viewer-advanced > summary').click()
+    page.get_by_label('X 光对比度', exact=True).fill('1.5')
+    page.get_by_label('X 光亮度', exact=True).fill('1.2')
+    page.get_by_role('button', name='恢复初始显示', exact=True).click()
+    check(page.get_by_label('X 光对比度', exact=True).input_value() == '1', 'X-ray contrast reset failed')
+    check(page.get_by_label('X 光亮度', exact=True).input_value() == '1', 'X-ray brightness reset failed')
+    check(page.get_by_role('link', name='保存显示图片 PNG', exact=True).get_attribute('href'), 'X-ray image download missing')
+
+    page.set_viewport_size({'width': 390, 'height': 844})
+    check(page.evaluate('document.documentElement.scrollWidth <= window.innerWidth + 2'), 'Horizontal overflow in mobile X-ray viewport')
+    page.get_by_role('button', name='X 光怎么看？', exact=True).click()
+    page.get_by_role('heading', name='先看完整画面，再放大想了解的位置', exact=True).wait_for(state='visible')
+    check(page.evaluate('document.documentElement.scrollWidth <= window.innerWidth + 2'), 'Horizontal overflow in mobile X-ray help')
+    page.screenshot(path=str(output / 'xray-mobile-help.png'), full_page=True)
+    page.get_by_role('button', name='关闭答疑', exact=True).click()
+    page.screenshot(path=str(output / 'xray-mobile.png'), full_page=True)
+    report['checks'].append('Projection help, zoom, display reset and 390 px mobile layout operated')
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('--url', default='http://127.0.0.1:4318')
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--study-id', help='Inspect an existing CT instead of creating a synthetic demo')
+    parser.add_argument('--study-id', help='Inspect an existing CT or X-ray instead of creating a synthetic demo')
     parser.add_argument('--headed', action='store_true')
     args = parser.parse_args()
     output = args.output.resolve()
@@ -53,6 +100,10 @@ def main() -> None:
             study_id = args.study_id
             card = page.locator(f'[data-study-id="{study_id}"] .study-select')
             card.click()
+            study = next(
+                item for item in api.get('/api/studies').json()['studies']
+                if item['id'] == study_id
+            )
         else:
             old_ids = {item['id'] for item in api.get('/api/studies').json()['studies']}
             page.get_by_role('button', name='打开合成示例', exact=True).click()
@@ -60,14 +111,37 @@ def main() -> None:
             studies = api.get('/api/studies').json()['studies']
             created = [item for item in studies if item['id'] not in old_ids]
             study_id = next(item['id'] for item in created if item['kind'] == 'ct' and item['supported'])
+            study = next(item for item in studies if item['id'] == study_id)
             report['created_study_ids'] = [item['id'] for item in created]
             report['checks'].append('Synthetic demo created from the browser')
+        if study['kind'] == 'xray':
+            check(study['supported'], 'Requested X-ray study is unsupported')
+            load_projection_study(page, study_id)
+            check_projection_viewer(page, output, report, search_help=True)
+            report['study_id'] = study_id
+            report['study_kind'] = 'xray'
+            report['elapsed_seconds'] = round(time.monotonic() - started, 2)
+            report['passed'] = not report['console_errors'] and not report['external_requests']
+            (output / 'browser-report.json').write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding='utf-8')
+            browser.close()
+            check(report['passed'], f'Browser errors or external requests found: {report}')
+            print(json.dumps({'passed': report['passed'], 'checks': len(report['checks']), 'elapsed_seconds': report['elapsed_seconds']}, ensure_ascii=False))
+            return
         page.get_by_label('横断位层面', exact=True).wait_for(state='visible', timeout=180000)
         page.locator('.three-viewport .render-badge').wait_for(state='visible', timeout=120000)
         page.locator('.three-viewport .view-message').wait_for(state='hidden', timeout=120000)
         check(page.locator('.slice-panel canvas').count() == 3, 'Expected three MPR canvases')
         check(page.locator('.three-viewport canvas').count() == 1, 'Expected a WebGL canvas')
         report['checks'].append('Three MPR canvases and volume rendering loaded')
+        check(page.locator('.viewer-advanced').get_attribute('open') is None, 'Advanced controls should be closed initially')
+        page.get_by_role('button', name='这几个画面怎么看？', exact=True).click()
+        page.get_by_role('heading', name='三个切面，是同一份 CT 的不同方向', exact=True).wait_for(state='visible')
+        page.get_by_label('搜索答疑', exact=True).fill('十字线')
+        page.get_by_role('heading', name='找到 1 个相关问题', exact=True).wait_for(state='visible')
+        page.get_by_role('button', name='关闭答疑', exact=True).click()
+        check(page.locator('.help-dialog').get_attribute('open') is None, 'Help did not close')
+        report['checks'].append('Contextual CT help and local FAQ search opened and closed')
+        page.screenshot(path=str(output / 'ct-basic.png'), full_page=True)
         if page.get_by_role('button', name='主体预览', exact=True).count():
             check(page.get_by_role('button', name='主体预览', exact=True).get_attribute('aria-pressed') == 'true', 'Body preview should be initially selected')
             page.get_by_role('button', name='全部结构', exact=True).click()
@@ -82,6 +156,7 @@ def main() -> None:
         image_stats = page.locator('.slice-panel canvas').evaluate_all('canvases => canvases.map(c => { const d=c.getContext("2d").getImageData(0,0,c.width,c.height).data; const levels=new Set(); for(let i=0;i<d.length;i+=4) if(d[i]===d[i+1] && d[i]===d[i+2]) levels.add(d[i]); return {width:c.width,height:c.height,levels:levels.size}; })')
         check(all(item['levels'] > 3 for item in image_stats), f'MPR appears empty: {image_stats}')
         report['mpr_canvas_stats'] = image_stats
+        page.locator('.viewer-advanced > summary').click()
         point_before = page.locator('.position-readout code').inner_text()
         axial = page.get_by_label('横断位层面', exact=True)
         maximum = int(axial.get_attribute('max'))
@@ -90,9 +165,9 @@ def main() -> None:
         canvas = page.locator('.slice-panel canvas').first
         bounds = canvas.bounding_box()
         canvas.click(position={'x': bounds['width'] * .6, 'y': bounds['height'] * .45})
-        page.get_by_role('button', name='软组织', exact=True).click()
+        page.get_by_role('button', name='看软组织', exact=True).click()
         check(page.get_by_label('窗位 HU', exact=True).input_value() == '40', 'Window preset failed')
-        page.get_by_role('button', name='骨窗', exact=True).click()
+        page.get_by_role('button', name='看骨骼', exact=True).click()
         report['checks'].append('Slice slider, crosshair and window preset operated')
         page.get_by_role('button', name='横断位全屏', exact=True).click()
         page.wait_for_function('Boolean(document.fullscreenElement)')
@@ -102,12 +177,12 @@ def main() -> None:
         page.evaluate('window.scrollTo(0,0)')
         page.screenshot(path=str(output / 'ct-volume.png'), full_page=True)
         with page.expect_download(timeout=60000) as download_event:
-            page.get_by_role('link', name='原始 NRRD', exact=True).click()
+            page.get_by_role('link', name='下载原始数据 NRRD', exact=True).click()
         download = download_event.value
         download.save_as(str(output / 'source.nrrd'))
         check((output / 'source.nrrd').stat().st_size > 100, 'NRRD download empty')
-        page.get_by_role('button', name='生成阈值表面', exact=True).click()
-        page.get_by_role('button', name='生成阈值表面', exact=True).wait_for(state='visible', timeout=240000)
+        page.get_by_role('button', name='生成表面模型', exact=True).click()
+        page.get_by_role('button', name='生成表面模型', exact=True).wait_for(state='visible', timeout=240000)
         page.locator('.mesh-progress').wait_for(state='hidden', timeout=240000)
         page.locator('.model-details').wait_for(state='visible', timeout=180000)
         page.locator('.three-viewport .render-badge').wait_for(state='visible', timeout=120000)
@@ -133,23 +208,22 @@ def main() -> None:
         page.mouse.up()
         page.get_by_role('button', name='重置三维视角', exact=True).click()
         report['checks'].append('Three-dimensional drag and reset operated')
-        page.set_viewport_size({'width': 1000, 'height': 900})
-        page.screenshot(path=str(output / 'compact.png'), full_page=True)
-        check(page.evaluate('document.documentElement.scrollWidth <= window.innerWidth + 2'), 'Horizontal overflow in compact viewport')
+        page.set_viewport_size({'width': 390, 'height': 844})
+        page.screenshot(path=str(output / 'ct-mobile.png'), full_page=True)
+        check(page.evaluate('document.documentElement.scrollWidth <= window.innerWidth + 2'), 'Horizontal overflow in mobile CT viewport')
+        page.get_by_role('button', name='这几个画面怎么看？', exact=True).click()
+        page.get_by_role('heading', name='三个切面，是同一份 CT 的不同方向', exact=True).wait_for(state='visible')
+        check(page.evaluate('document.documentElement.scrollWidth <= window.innerWidth + 2'), 'Horizontal overflow in mobile CT help')
+        page.screenshot(path=str(output / 'ct-mobile-help.png'), full_page=True)
+        page.get_by_role('button', name='关闭答疑', exact=True).click()
+        report['checks'].append('CT layout and contextual help fit a 390 px mobile viewport')
         page.set_viewport_size({'width': 1500, 'height': 1100})
         studies = api.get('/api/studies').json()['studies']
         projection = next((item for item in studies if item['kind'] == 'xray' and item['supported']), None)
         if projection:
-            page.locator(f'[data-study-id="{projection["id"]}"] .study-select').click()
-            image = page.locator('.xray-host img')
-            image.wait_for(state='visible', timeout=120000)
-            page.wait_for_function('document.querySelector(".xray-host img")?.complete && document.querySelector(".xray-host img").naturalWidth > 0')
-            page.get_by_role('button', name='放大影像', exact=True).click()
-            check('120%' in page.locator('.zoom-controls').inner_text(), 'Xray zoom failed')
-            page.get_by_label('X 光对比度', exact=True).fill('1.5')
-            page.get_by_role('button', name='重置', exact=True).click()
+            load_projection_study(page, projection['id'])
+            check_projection_viewer(page, output, report, search_help=False)
             page.screenshot(path=str(output / 'xray.png'), full_page=True)
-            report['checks'].append('Projection image loaded; zoom/contrast/reset operated')
         report['study_id'] = study_id
         report['elapsed_seconds'] = round(time.monotonic() - started, 2)
         report['passed'] = not report['console_errors'] and not report['external_requests']

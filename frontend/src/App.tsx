@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ArrowUpRight, Bone, Box, ChevronRight, FileImage, FlaskConical, FolderOpen, HardDrive, Layers, LoaderCircle, Plus, ScanLine, ShieldCheck, Trash2, Upload, X } from 'lucide-react';
+import { AlertTriangle, ArrowUpRight, Bone, Box, ChevronRight, CircleHelp, FileImage, FlaskConical, FolderOpen, HardDrive, Layers, LoaderCircle, Plus, ScanLine, ShieldCheck, Trash2, Upload, X } from 'lucide-react';
 import { CtViewer } from './CtViewer';
 import { XrayViewer } from './XrayViewer';
+import { useHelp } from './HelpContext';
 import { api, assetUrl, loadGzip, localText, studyLabel, waitForJob } from './types';
 import type { CtMetadata, Job, Study, XrayMetadata } from './types';
 
 type ImportResult = { studies: Study[]; warnings: string[] };
 
 export function App() {
+  const { openHelp } = useHelp();
   const [studies, setStudies] = useState<Study[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [meta, setMeta] = useState<CtMetadata | null>(null);
@@ -55,7 +57,7 @@ export function App() {
     if (!selected?.supported) return;
     const abort = new AbortController();
     const id = selectedId;
-    setLoading('正在读取检查…');
+    setLoading('正在读取影像…');
     async function load() {
       if (!selected!.ready) {
         const queued = await api<Job>(`/studies/${encodeURIComponent(id)}/prepare`, { method: 'POST', signal: abort.signal });
@@ -67,7 +69,7 @@ export function App() {
       if (abort.signal.aborted) return;
       if (selected!.kind === 'ct') {
         const ct = data as CtMetadata;
-        setLoading('正在载入原始 HU 体数据…');
+        setLoading('正在载入 CT 切片…');
         const buffer = await loadGzip(assetUrl(id, 'volume.rawz'), abort.signal);
         if (abort.signal.aborted) return;
         if (buffer.byteLength !== ct.dimensions_xyz.reduce((a, b) => a * b, 1) * 4) throw new Error('CT 体数据尺寸与元数据不一致，无法显示。');
@@ -77,7 +79,7 @@ export function App() {
       setLoadedStudyId(id); setLoading(null); setJob(null);
     }
     load().catch(cause => {
-      if (!abort.signal.aborted) { setError(cause.message || '无法打开这次检查'); setLoading(null); setJob(null); }
+      if (!abort.signal.aborted) { setError(cause.message || '暂时无法打开这组影像'); setLoading(null); setJob(null); }
     });
     return () => abort.abort();
     // A study is loaded once on selection; ready updates must not restart its preparation.
@@ -112,7 +114,7 @@ export function App() {
   }
 
   async function deleteStudy(study: Study) {
-    if (!window.confirm('删除这次检查及其本地生成的数据？原始导入文件不会从您的电脑中移除。')) return;
+    if (!window.confirm('从查看器中删除这组影像及其生成结果？你最初选择的原文件会保留。')) return;
     try {
       await api(`/studies/${encodeURIComponent(study.id)}`, { method: 'DELETE' });
       setStudies(previous => previous.filter(item => item.id !== study.id));
@@ -123,45 +125,46 @@ export function App() {
     <input ref={filesInput} className="hidden" type="file" multiple aria-label="选择 DICOM、ZIP 或图片文件" onChange={event => event.target.files && void importFiles(event.target.files)} />
     <input ref={folderInput} className="hidden" type="file" multiple {...{ webkitdirectory: '' }} aria-label="选择 DICOM 文件夹" onChange={event => event.target.files && void importFiles(event.target.files)} />
     <header className="app-header">
-      <a className="brand" href="/" aria-label="OpenBone 首页"><span className="brand-symbol"><Bone size={25} strokeWidth={1.8} /></span><span>Open<span className="brand-light">Bone</span><small>影像工作台</small></span></a>
-      <nav className="header-center"><span className="header-dot" /> 本地影像，清楚看见</nav>
-      <div className="header-actions"><span className="local-badge"><ShieldCheck size={14} /> 本地处理</span><span className="version">v0.1.0</span></div>
+      <a className="brand" href="/" aria-label="OpenBone 首页"><span className="brand-symbol"><Bone size={25} strokeWidth={1.8} /></span><span>Open<span className="brand-light">Bone</span><small>自己的影像，慢慢看懂</small></span></a>
+      <div className="header-center"><span className="header-dot" /> 为想了解自己影像的你</div>
+      <div className="header-actions"><button className="header-help" onClick={() => openHelp('start')}><CircleHelp size={16} /> 看不懂？点这里</button><button className="local-badge" aria-label="了解影像隐私" onClick={() => openHelp('privacy')}><ShieldCheck size={14} /> 只在本机处理</button></div>
     </header>
     <div className="app-body">
       <aside className="sidebar">
-        <div className="sidebar-heading"><span>我的检查</span><span className="count">{studies.length.toString().padStart(2, '0')}</span></div>
-        <button className="button primary import-main" disabled={importing} onClick={() => filesInput.current?.click()}>{importing ? <LoaderCircle className="spin" size={17} /> : <Plus size={18} />} {importing ? '正在导入…' : '导入影像'}</button>
+        <div className="sidebar-heading"><span>已打开的影像</span><span className="count">{studies.length.toString().padStart(2, '0')}</span></div>
+        <button className="button primary import-main" disabled={importing} onClick={() => filesInput.current?.click()}>{importing ? <LoaderCircle className="spin" size={17} /> : <Plus size={18} />} {importing ? '正在导入…' : '打开我的片子'}</button>
         <button className="button subtle folder-button" disabled={importing} onClick={() => folderInput.current?.click()}><FolderOpen size={15} /> 选择整个文件夹</button>
         <div className="study-list">
-          {!studies.length && <div className="no-studies"><Layers size={30} strokeWidth={1.2} /><p>还没有检查</p><small>导入后，检查将出现在这里</small></div>}
+          {!studies.length && <div className="no-studies"><Layers size={30} strokeWidth={1.2} /><p>还没有打开片子</p><small>医院给的文件或 ZIP 都可以试试</small></div>}
           {studies.map(study => <div className={`study-card ${study.id === selectedId ? 'selected' : ''}`} data-study-id={study.id} key={study.id}>
             <button className="study-select" onClick={() => setSelectedId(study.id)}>
               <span className={`study-icon ${study.kind}`}>{study.kind === 'ct' ? <ScanLine size={20} /> : <FileImage size={20} />}</span>
-              <span className="study-copy"><strong>{studyLabel(study)}</strong><span>{study.modality || study.kind.toUpperCase()} · {study.kind === 'ct' ? `${study.count} 层` : `${study.columns} × ${study.rows}`}</span><small className={!study.supported ? 'unsupported' : ''}>{!study.supported ? '暂不支持' : study.ready ? '已就绪' : '待处理'}</small></span>
+              <span className="study-copy"><strong>{studyLabel(study)}</strong><span>{study.kind === 'ct' ? `${study.count} 张切片` : '二维图片'}</span><small className={!study.supported ? 'unsupported' : ''}>{!study.supported ? '暂时无法查看' : study.ready ? '可以查看' : '点击后准备'}</small></span>
               {study.id === selectedId && <ChevronRight size={15} className="study-chevron" />}
             </button>
-            <button className="delete-study" aria-label={`删除${studyLabel(study)}`} title="删除这次检查" onClick={() => void deleteStudy(study)}><Trash2 size={14} /></button>
+            <button className="delete-study" aria-label={`删除${studyLabel(study)}`} title="从查看器删除这组影像" onClick={() => void deleteStudy(study)}><Trash2 size={14} /></button>
           </div>)}
         </div>
         <button className="demo-link" disabled={importing} onClick={() => void loadDemo()}><FlaskConical size={16} /><span>打开合成示例</span><ArrowUpRight size={14} /></button>
-        <details className="support-info"><summary>支持哪些影像？</summary><p>常规单帧 CT DICOM、DICOM X 光及 PNG / JPEG / WebP / BMP 图片。可选择多个文件、文件夹或 ZIP。</p><p>首版对斜位、机架倾斜、非均匀层距和多帧 CT 明确提示不支持。</p></details>
-        <div className="sidebar-bottom"><HardDrive size={15} /><span>影像保存在本机<br /><small>软件不上传到云端</small></span></div>
+        <button className="sidebar-help" onClick={() => openHelp('start')}>该选哪个文件？为什么有好几组？</button>
+        <details className="support-info"><summary>哪些文件可以打开？</summary><p>医院给的 CT / X 光 DICOM 文件、文件夹或 ZIP，以及 PNG / JPEG / WebP / BMP 图片。三维需要完整 CT 切片，单张截图只能当图片看。</p><p>部分扫描格式首版暂不支持，打不开时会说明原因。</p></details>
+        <div className="sidebar-bottom"><HardDrive size={15} /><span>影像保存在本机<br /><small>合成示例是人工图形，并非患者影像</small></span></div>
       </aside>
       <main className="main-workspace">
         {error && <div className="notice error" role="alert"><AlertTriangle size={18} /><span>{error}</span><button aria-label="关闭错误提示" onClick={() => setError('')}><X size={16} /></button></div>}
         {notices.length > 0 && <div className="notice warning"><AlertTriangle size={17} /><div>{notices.map((notice, index) => <p key={index}>{localText(notice)}</p>)}</div><button aria-label="关闭导入提示" onClick={() => setNotices([])}><X size={16} /></button></div>}
         {selected ? <>
-          <div className="workspace-heading"><div><div className="eyebrow">{selected.kind === 'ct' ? 'CT WORKSPACE' : 'IMAGE WORKSPACE'}</div><h1>{studyLabel(selected)}</h1><p>{selected.kind === 'ct' ? '从原始切片到三维形态，在一个工作台中查看。' : '打开影像，自由缩放，调整显示。'}</p></div><span className="data-badge"><span /> {selected.kind === 'ct' ? 'CT 检查' : '二维影像'}</span></div>
-          {!selected.supported ? <div className="unsupported-state"><AlertTriangle size={35} /><h2>这组影像暂不支持</h2><p>{localText(selected.reason || '影像格式或几何超出了首版的支持范围。')}</p><button className="button secondary" onClick={() => filesInput.current?.click()}>导入其他影像</button></div>
-          : loading || (loadedStudyId !== selectedId && !error) ? <div className="loading-state" role="status"><div className="loading-scan"><ScanLine size={40} /><span /></div><h2>{loading || '正在读取检查…'}</h2><p>{job?.status === 'queued' ? '检查已进入本地处理队列，请稍候。' : '解码与三维数据准备在本机完成。较大的检查可能需要一些时间。'}</p><div className="indeterminate"><span /></div></div>
+          <div className="workspace-heading"><div><div className="eyebrow">{selected.kind === 'ct' ? '逐层看，也能立体看' : '放大看看自己的片子'}</div><h1>{studyLabel(selected)}</h1><p>{selected.kind === 'ct' ? '先了解方向与形状，再对照报告整理自己的疑问。' : '拖动移动，滚轮放大；想调明暗时，展开下方设置。'}</p></div><span className="data-badge"><span /> 仅本机查看</span></div>
+          {!selected.supported ? <div className="unsupported-state"><AlertTriangle size={35} /><h2>这组影像暂时打不开</h2><p>{localText(selected.reason || '当前版本还不能正确显示这种影像格式。')}</p><p>这是软件支持范围的提示，不是病情判断。</p><button className="button secondary" onClick={() => openHelp('start')}><CircleHelp size={15} /> 查看打不开的常见原因</button><button className="button subtle" onClick={() => filesInput.current?.click()}>打开其他影像</button></div>
+          : loading || (loadedStudyId !== selectedId && !error) ? <div className="loading-state" role="status"><div className="loading-scan"><ScanLine size={40} /><span /></div><h2>{loading || '正在读取影像…'}</h2><p>{job?.status === 'queued' ? '正在等待本机处理，请稍候。' : '正在这台电脑上准备画面，完整 CT 可能需要一些时间。'}</p><div className="indeterminate"><span /></div></div>
           : loadedStudyId === selectedId && meta && volume ? <CtViewer key={selected.id} studyId={selected.id} meta={meta} volume={volume} onModel={model => setMeta(previous => previous ? { ...previous, models: [...previous.models.filter(item => item.mesh_file !== model.mesh_file), model] } : previous)} />
           : loadedStudyId === selectedId && image ? <XrayViewer key={selected.id} studyId={selected.id} image={image} />
-          : error ? <div className="retry-area"><button className="button secondary" onClick={() => setReload(value => value + 1)}>重新打开这次检查</button></div> : null}
+          : error ? <div className="retry-area"><button className="button secondary" onClick={() => setReload(value => value + 1)}>重新打开这组影像</button></div> : null}
         </> : <div className="welcome">
-          <div className="welcome-topline"><span className="tiny-label">OPEN SOURCE · LOCAL FIRST</span><span className="fine-rule" /></div>
-          <div className="welcome-layout"><div className="welcome-copy"><div className="eyebrow">为每一份影像，打开一个视角</div><h1>自己的片子，<br /><em>看得更明白。</em></h1><p className="welcome-intro">轻量、开源的 CT 与 X 光查看器。<br />导入本地影像，联动浏览切片，探索三维形态。</p><div className="welcome-buttons"><button className="button primary large" disabled={importing} onClick={() => filesInput.current?.click()}><Upload size={18} /> 导入影像 <ArrowUpRight size={17} /></button><button className="button secondary large" disabled={importing} onClick={() => void loadDemo()}><FlaskConical size={17} /> 先试试合成示例</button></div><div className="drop-note"><FolderOpen size={15} /> 也可以将 DICOM、ZIP 或图片拖到这里</div></div><div className="welcome-art" aria-hidden="true"><div className="art-grid"><div className="phantom-panel"><span>AXIAL</span><div className="phantom axial" /><i /><b /></div><div className="phantom-panel"><span>CORONAL</span><div className="phantom coronal" /><i /><b /></div><div className="phantom-panel"><span>SAGITTAL</span><div className="phantom sagittal" /><i /><b /></div><div className="phantom-panel three-illustration"><Box size={67} strokeWidth={0.65} /><span>3D VIEW</span></div></div><div className="art-caption"><span className="green-dot" /> 二维与三维，连在一起<span>示意画面</span></div></div></div>
-          <div className="feature-row"><div><span className="feature-number">01</span><div><h3>多平面联动</h3><p>横断、冠状、矢状位同步定位。</p></div></div><div><span className="feature-number">02</span><div><h3>三维探索</h3><p>体绘制、阈值表面与 STL 导出。</p></div></div><div><span className="feature-number">03</span><div><h3>在本机完成</h3><p>无需账户，不上传个人影像。</p></div></div></div>
-          <div className="welcome-footer"><ShieldCheck size={17} /><p>用于个人查看与学习。三维显示和阈值表面不能替代原始影像或专业诊断。</p></div>
+          <div className="welcome-topline"><span className="tiny-label">免费开源 · 在自己电脑上看片</span><span className="fine-rule" /></div>
+          <div className="welcome-layout"><div className="welcome-copy"><div className="eyebrow">给想了解自己病情的你</div><h1>自己的片子，<br /><em>看得更明白。</em></h1><p className="welcome-intro">拿到医院的 CT 或 X 光，却不知道从哪看起？<br />打开片子，认识方向，转动三维，一步步了解画面。</p><div className="welcome-buttons"><button className="button primary large" disabled={importing} onClick={() => filesInput.current?.click()}><Upload size={18} /> 打开我的片子 <ArrowUpRight size={17} /></button><button className="button secondary large" disabled={importing} onClick={() => void loadDemo()}><FlaskConical size={17} /> 先试试合成示例</button></div><div className="drop-note"><FolderOpen size={15} /> 把医院给的文件、文件夹或 ZIP 选进来；也可以拖入文件</div><button className="welcome-help" onClick={() => openHelp('start')}><CircleHelp size={16} /> 第一次用？看看从哪里开始</button></div><div className="welcome-art" aria-hidden="true"><div className="art-grid"><div className="phantom-panel"><span>横着看</span><div className="phantom axial" /><i /><b /></div><div className="phantom-panel"><span>正面看</span><div className="phantom coronal" /><i /><b /></div><div className="phantom-panel"><span>侧面看</span><div className="phantom sagittal" /><i /><b /></div><div className="phantom-panel three-illustration"><Box size={67} strokeWidth={0.65} /><span>立体看</span></div></div><div className="art-caption"><span className="green-dot" /> 同一个部位，不同方向<span>人工示意画面</span></div></div></div>
+          <div className="feature-row"><div><span className="feature-number">01</span><div><h3>一层层，慢慢看</h3><p>从三个方向找到同一个位置。</p></div></div><div><span className="feature-number">02</span><div><h3>转一转，认识外形</h3><p>把 CT 变成立体画面，更容易理解形状。</p></div></div><div><span className="feature-number">03</span><div><h3>不懂时，随时查</h3><p>画面旁有答疑，操作和常见疑问都有说明。</p></div></div></div>
+          <div className="welcome-footer"><ShieldCheck size={17} /><p>无需账号，影像在本机处理。帮助你理解画面、整理疑问；具体病情仍需结合检查报告和医生评估。</p></div>
         </div>}
       </main>
     </div>
