@@ -1,0 +1,42 @@
+# Private medical input and generated output never belong in source control.
+data/
+private/
+runtime/
+uploads/
+output/
+outputs/
+test-artifacts/
+*.dcm
+*.dicom
+*.zip
+*.nrrd
+*.npy
+*.npz
+*.rawz
+*.meshz
+*.stl
+*.ply
+
+# Local tooling and generated build products
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.env
+.env.*
+node_modules/
+frontend/dist/
+dist/
+build/
+*.tsbuildinfo
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Only synthetic fixture code belongs in tests; fixture binaries are generated.
+tests/fixtures/
