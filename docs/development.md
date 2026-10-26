@@ -6,7 +6,7 @@
 
 - Python 3.12 或更新版本。
 - Node.js 22.12 或更新版本，包含 npm。
-- 支持 WebGL 的现代浏览器；当前实际验证环境为 Windows、Python 3.12 与 Chromium，macOS/Linux 尚未实测。
+- 支持 WebGL 的现代浏览器。当前已在 Windows、Python 3.12 与 Chromium 上完成实际运行验证；GitHub Actions 在 Ubuntu 和 Windows 上通过了自动化测试、源码审计、依赖安装与前端构建，macOS/Linux 的完整本地运行尚未实测。
 
 在项目根目录运行 `python run.py`，或在 Windows 双击 `启动查看器.cmd`。首次启动在项目的 `.venv` 和 `frontend/node_modules` 内安装依赖并构建前端，然后打开 `http://127.0.0.1:4318`。首次安装需要联网，查看影像本身不需要联网。
 
@@ -121,7 +121,7 @@ python scripts/validate_private_inputs.py /path/to/authorized-ct.zip --output /p
 
 这个工具会把输入导入本地查看器、准备受支持的序列、生成 CT 表面并保存技术报告。CT 的独立全量 HU 和空间核对需要原始 DICOM ZIP；它不会自动删除导入的检查。原始文件前后哈希会被核对，详细结果不能未经审查公开。
 
-发布前可明确指定自己的 DICOM ZIP，额外检查抽样身份字段是否混入 Git 可见源文件：
+发布或更新前可明确指定自己的 DICOM ZIP，额外检查抽样身份字段是否混入 Git 可见源文件：
 
 ```sh
 python scripts/audit_source.py --private-dicom-zip /path/to/authorized-ct.zip
